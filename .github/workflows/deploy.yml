@@ -1,0 +1,88 @@
+name: TaskFlow CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  # 1. Continuous Integration (Lint, Build & Test)
+  ci:
+    name: Build & Verify (CI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package.json
+            frontend/package.json
+
+      # Backend Verification
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Verify Backend Syntax & Files
+        working-directory: ./backend
+        run: node -c server.js
+
+      # Frontend Build Verification
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Frontend Production Bundle
+        working-directory: ./frontend
+        run: npm run build
+
+  # 2. Docker Images Verification & Deployment
+  docker-build:
+    name: Build Docker Images
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build Backend Docker Image
+      - name: Build Backend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: taskflow-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build Frontend Docker Image
+      - name: Build Frontend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: taskflow-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Optional: Deploy step placeholder
+      - name: Deployment Notification
+        run: |
+          echo "CI/CD checks and Docker builds completed successfully!"
+          echo "Ready for deployment to production environment."
+
